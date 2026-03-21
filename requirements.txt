@@ -1,0 +1,35 @@
+# DFIR Automation Framework - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core / always required
+requests>=2.31.0          # HTTP client (Wazuh, TheHive, VirusTotal, Shuffle APIs)
+psutil>=5.9.0             # Process/network enumeration for live triage
+
+# Forensics
+pefile>=2023.2.7          # PE header analysis (static malware analysis)
+yara-python>=4.3.1        # YARA rule scanning
+python-evtx>=0.7.4        # Windows EVTX event log parsing
+pyshark>=0.6              # Wireshark/tshark Python wrapper (network forensics)
+scapy>=2.5.0              # Packet crafting & PCAP analysis
+dpkt>=1.9.8               # Fast PCAP parsing (fallback to scapy)
+
+# Malware Analysis
+volatility3>=2.5.0        # Memory forensics framework
+
+# Threat Intelligence
+pyyaml>=6.0               # Sigma rule parsing
+stix2>=3.0.1              # STIX 2.1 threat intel format
+
+# Reporting
+python-docx>=1.0.0        # Word document report generation (via anthropic-skills:docx)
+jinja2>=3.1.2             # HTML report templating
+
+# Utilities
+tqdm>=4.66.0              # Progress bars for long scans
+rich>=13.0.0              # Rich terminal output
+tabulate>=0.9.0           # Table formatting
+
+# Optional / for advanced features
+# cryptography>=41.0.0    # Encryption/decryption analysis helpers
+# python-magic>=0.4.27    # File type detection via libmagic
+# ssdeep>=3.4             # Fuzzy hashing for malware similarity

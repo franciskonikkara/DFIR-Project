@@ -1,0 +1,290 @@
+<!--
+  Custom Wazuh Detection Rules for DFIR Automation Lab
+  Rule IDs: 100001-100099 (custom range)
+
+  References:
+    - MITRE ATT&CK Framework
+    - SOC Automation Lab (github.com/uruc/SOC-Automation-Lab)
+    - Sigma rules converted to Wazuh format
+-->
+
+<group name="dfir_custom_rules">
+
+  <!-- ================================================================
+       CREDENTIAL DUMPING (T1003)
+       ================================================================ -->
+
+  <!-- Mimikatz detection - matches even renamed executables via OriginalFileName -->
+  <rule id="100001" level="15">
+    <if_group>sysmon</if_group>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)mimikatz\.exe</field>
+    <description>Mimikatz execution detected (T1003.001 - Credential Dumping)</description>
+    <mitre>
+      <id>T1003.001</id>
+    </mitre>
+    <group>credential_dumping,critical,mitre_attack</group>
+  </rule>
+
+  <!-- LSASS memory access by non-system processes (Sysmon Event 10) -->
+  <rule id="100002" level="14">
+    <if_group>sysmon_event10</if_group>
+    <field name="win.eventdata.targetImage" type="pcre2">(?i)lsass\.exe</field>
+    <field name="win.eventdata.sourceImage" type="pcre2" negate="yes">(?i)(svchost\.exe|wininit\.exe|csrss\.exe|System|antimalware|MsMpEng)</field>
+    <description>Suspicious LSASS memory access - potential credential dumping (T1003.001)</description>
+    <mitre>
+      <id>T1003.001</id>
+    </mitre>
+    <group>credential_dumping,high,mitre_attack</group>
+  </rule>
+
+  <!-- ================================================================
+       PROCESS INJECTION (T1055)
+       ================================================================ -->
+
+  <!-- CreateRemoteThread into another process -->
+  <rule id="100010" level="14">
+    <if_group>sysmon_event8</if_group>
+    <field name="win.eventdata.targetImage" type="pcre2">(?i)(explorer\.exe|svchost\.exe|lsass\.exe|winlogon\.exe)</field>
+    <description>CreateRemoteThread injection into sensitive process (T1055)</description>
+    <mitre>
+      <id>T1055</id>
+    </mitre>
+    <group>process_injection,high,mitre_attack</group>
+  </rule>
+
+  <!-- ================================================================
+       LIVING-OFF-THE-LAND BINARIES (T1218)
+       ================================================================ -->
+
+  <!-- Suspicious certutil usage (download cradle) -->
+  <rule id="100020" level="12">
+    <if_group>sysmon</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)certutil\.exe</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(-decode|-urlcache|-encode|http://|https://)</field>
+    <description>Suspicious certutil usage - potential download/decode operation (T1218.014)</description>
+    <mitre>
+      <id>T1218.014</id>
+    </mitre>
+    <group>lolbin,high,mitre_attack</group>
+  </rule>
+
+  <!-- Regsvr32 loading remote scriptlet (Squiblydoo) -->
+  <rule id="100021" level="13">
+    <if_group>sysmon</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)regsvr32\.exe</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(/s|scrobj\.dll|http://|https://)</field>
+    <description>Regsvr32 Squiblydoo technique detected (T1218.010)</description>
+    <mitre>
+      <id>T1218.010</id>
+    </mitre>
+    <group>lolbin,high,mitre_attack</group>
+  </rule>
+
+  <!-- mshta.exe executing VBScript/JScript -->
+  <rule id="100022" level="12">
+    <if_group>sysmon</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)mshta\.exe</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(vbscript:|javascript:|http://|https://|\.hta)</field>
+    <description>Suspicious mshta.exe execution (T1218.005)</description>
+    <mitre>
+      <id>T1218.005</id>
+    </mitre>
+    <group>lolbin,high,mitre_attack</group>
+  </rule>
+
+  <!-- ================================================================
+       POWERSHELL ABUSE (T1059.001)
+       ================================================================ -->
+
+  <!-- Encoded PowerShell command -->
+  <rule id="100030" level="12">
+    <if_group>sysmon</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)powershell(\.exe)?</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(-[Ee]nc(odedCommand)?|-[Ee]\s+[A-Za-z0-9+/=]{20,})</field>
+    <description>PowerShell encoded command execution (T1059.001)</description>
+    <mitre>
+      <id>T1059.001</id>
+    </mitre>
+    <group>powershell,high,mitre_attack</group>
+  </rule>
+
+  <!-- PowerShell download cradle -->
+  <rule id="100031" level="13">
+    <if_group>sysmon</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)powershell(\.exe)?</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(Invoke-WebRequest|IWR|DownloadString|DownloadFile|WebClient|Net\.Http)</field>
+    <description>PowerShell download cradle detected (T1059.001)</description>
+    <mitre>
+      <id>T1059.001</id>
+    </mitre>
+    <group>powershell,high,mitre_attack</group>
+  </rule>
+
+  <!-- PowerShell disabling security features -->
+  <rule id="100032" level="14">
+    <if_group>sysmon</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)powershell(\.exe)?</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(Set-MpPreference.*-Disable|Add-MpPreference.*Exclusion|DisableRealtimeMonitoring|DisableIOAVProtection)</field>
+    <description>PowerShell disabling Windows Defender (T1562.001)</description>
+    <mitre>
+      <id>T1562.001</id>
+    </mitre>
+    <group>defense_evasion,critical,mitre_attack</group>
+  </rule>
+
+  <!-- ================================================================
+       PERSISTENCE (T1053, T1547)
+       ================================================================ -->
+
+  <!-- Scheduled task created (Windows Event 4698) -->
+  <rule id="100040" level="9">
+    <if_group>windows</if_group>
+    <field name="win.system.eventID" type="pcre2">^4698$</field>
+    <description>Scheduled task created - review for persistence (T1053.005)</description>
+    <mitre>
+      <id>T1053.005</id>
+    </mitre>
+    <group>persistence,medium,mitre_attack</group>
+  </rule>
+
+  <!-- Suspicious scheduled task in temp directory -->
+  <rule id="100041" level="14">
+    <if_group>windows</if_group>
+    <field name="win.system.eventID" type="pcre2">^4698$</field>
+    <field name="win.eventdata.taskContent" type="pcre2">(?i)(\\temp\\|\\appdata\\|\\public\\)</field>
+    <description>Scheduled task pointing to suspicious location (T1053.005)</description>
+    <mitre>
+      <id>T1053.005</id>
+    </mitre>
+    <group>persistence,high,mitre_attack</group>
+  </rule>
+
+  <!-- Run key persistence via registry -->
+  <rule id="100042" level="11">
+    <if_group>sysmon_event13</if_group>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run</field>
+    <description>Registry Run key modified - potential persistence (T1547.001)</description>
+    <mitre>
+      <id>T1547.001</id>
+    </mitre>
+    <group>persistence,high,mitre_attack</group>
+  </rule>
+
+  <!-- ================================================================
+       LATERAL MOVEMENT (T1021)
+       ================================================================ -->
+
+  <!-- PsExec service installation -->
+  <rule id="100050" level="13">
+    <if_group>windows</if_group>
+    <field name="win.system.eventID" type="pcre2">^7045$</field>
+    <field name="win.eventdata.serviceName" type="pcre2">(?i)(psexec|psexesvc)</field>
+    <description>PsExec service installed - lateral movement suspected (T1021.002)</description>
+    <mitre>
+      <id>T1021.002</id>
+    </mitre>
+    <group>lateral_movement,high,mitre_attack</group>
+  </rule>
+
+  <!-- Pass-the-Hash / NTLM authentication anomaly -->
+  <rule id="100051" level="11">
+    <if_group>windows</if_group>
+    <field name="win.system.eventID" type="pcre2">^4776$</field>
+    <field name="win.eventdata.status" type="pcre2">0xC000006A</field>
+    <description>NTLM authentication failure - potential Pass-the-Hash (T1550.002)</description>
+    <mitre>
+      <id>T1550.002</id>
+    </mitre>
+    <group>lateral_movement,medium,mitre_attack</group>
+  </rule>
+
+  <!-- ================================================================
+       DEFENSE EVASION (T1562, T1070)
+       ================================================================ -->
+
+  <!-- Event log cleared -->
+  <rule id="100060" level="14">
+    <if_group>windows</if_group>
+    <field name="win.system.eventID" type="pcre2">^(1102|104)$</field>
+    <description>Security Event Log cleared - evidence tampering (T1070.001)</description>
+    <mitre>
+      <id>T1070.001</id>
+    </mitre>
+    <group>defense_evasion,critical,mitre_attack</group>
+  </rule>
+
+  <!-- Windows Defender disabled via registry -->
+  <rule id="100061" level="14">
+    <if_group>sysmon_event13</if_group>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)\\Windows Defender\\.*DisableRealtimeMonitoring</field>
+    <description>Windows Defender real-time monitoring disabled (T1562.001)</description>
+    <mitre>
+      <id>T1562.001</id>
+    </mitre>
+    <group>defense_evasion,critical,mitre_attack</group>
+  </rule>
+
+  <!-- ================================================================
+       EXFILTRATION / C2 (T1041, T1071)
+       ================================================================ -->
+
+  <!-- DNS query to known C2 port or unusual TLD -->
+  <rule id="100070" level="10">
+    <if_group>sysmon_event22</if_group>
+    <field name="win.eventdata.queryName" type="pcre2">(?i)\.(top|xyz|pw|cc|tk|ml|ga|cf)\b</field>
+    <description>DNS query to suspicious TLD - potential C2 communication (T1071.004)</description>
+    <mitre>
+      <id>T1071.004</id>
+    </mitre>
+    <group>c2,medium,mitre_attack</group>
+  </rule>
+
+  <!-- Large outbound file transfer (potential exfiltration) -->
+  <rule id="100071" level="12">
+    <if_group>sysmon_event3</if_group>
+    <field name="win.eventdata.destinationPort" type="pcre2">^(21|22|25|443|80|8080|8443)$</field>
+    <field name="win.eventdata.initiated" type="pcre2">^true$</field>
+    <description>Outbound connection on data transfer port (T1041)</description>
+    <mitre>
+      <id>T1041</id>
+    </mitre>
+    <group>exfiltration,medium,mitre_attack</group>
+  </rule>
+
+  <!-- ================================================================
+       RANSOMWARE INDICATORS
+       ================================================================ -->
+
+  <!-- Mass file modification (Sysmon Event 11) - ransomware behavior -->
+  <rule id="100080" level="15" frequency="50" timeframe="30">
+    <if_matched_sid>100082</if_matched_sid>
+    <description>Mass file creation - potential ransomware encryption in progress (T1486)</description>
+    <mitre>
+      <id>T1486</id>
+    </mitre>
+    <group>ransomware,critical,mitre_attack</group>
+  </rule>
+
+  <!-- Single suspicious file extension creation -->
+  <rule id="100082" level="8">
+    <if_group>sysmon_event11</if_group>
+    <field name="win.eventdata.targetFilename" type="pcre2">(?i)\.(locked|encrypted|enc|crypto|crypt|wnry|wncry|cerber|locky|satan|zepto)\b</field>
+    <description>Ransomware file extension created (T1486)</description>
+    <mitre>
+      <id>T1486</id>
+    </mitre>
+    <group>ransomware,high,mitre_attack</group>
+  </rule>
+
+  <!-- Ransom note file creation -->
+  <rule id="100083" level="15">
+    <if_group>sysmon_event11</if_group>
+    <field name="win.eventdata.targetFilename" type="pcre2">(?i)(README.*DECRYPT|HOW.TO.DECRYPT|DECRYPT.*FILES|RANSOM|_HELP_|RESTORE_FILES)</field>
+    <description>Ransom note file detected - active ransomware (T1486)</description>
+    <mitre>
+      <id>T1486</id>
+    </mitre>
+    <group>ransomware,critical,mitre_attack</group>
+  </rule>
+
+</group>

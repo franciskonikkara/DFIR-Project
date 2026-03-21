@@ -1,0 +1,226 @@
+<!--
+  Sysmon Configuration for DFIR Monitoring
+  Based on: https://github.com/olafhartong/sysmon-modular
+
+  Captures forensically relevant events while minimizing noise:
+  - All process creation (Event 1) with full command lines
+  - Network connections to non-standard ports
+  - File creation in sensitive paths
+  - Registry modifications for persistence keys
+  - Driver/DLL loading anomalies
+  - DNS queries
+  - Named pipe creation
+-->
+
+<Sysmon schemaversion="4.90">
+
+  <HashAlgorithms>md5,sha256,IMPHASH</HashAlgorithms>
+  <CheckRevocation>False</CheckRevocation>
+
+  <EventFiltering>
+
+    <!-- ============================================================
+         EVENT 1: PROCESS CREATION (Capture all - critical for IR)
+         ============================================================ -->
+    <RuleGroup name="ProcessCreate" groupRelation="or">
+      <ProcessCreate onmatch="exclude">
+        <!-- Exclude very noisy but benign processes -->
+        <Image condition="is">C:\Windows\System32\conhost.exe</Image>
+        <Image condition="end with">svchost.exe</Image>
+        <CommandLine condition="contains">C:\Windows\system32\DllHost.exe /Processid</CommandLine>
+      </ProcessCreate>
+    </RuleGroup>
+
+    <!-- ============================================================
+         EVENT 2: FILE CREATION TIME CHANGE
+         ============================================================ -->
+    <RuleGroup name="FileCreateTime" groupRelation="or">
+      <FileCreateTime onmatch="include">
+        <!-- Timestomping in sensitive directories -->
+        <TargetFilename condition="contains">C:\Windows\System32</TargetFilename>
+        <TargetFilename condition="contains">C:\Windows\SysWOW64</TargetFilename>
+        <TargetFilename condition="end with">.exe</TargetFilename>
+        <TargetFilename condition="end with">.dll</TargetFilename>
+      </FileCreateTime>
+    </RuleGroup>
+
+    <!-- ============================================================
+         EVENT 3: NETWORK CONNECTIONS
+         ============================================================ -->
+    <RuleGroup name="NetworkConnect" groupRelation="or">
+      <NetworkConnect onmatch="include">
+        <!-- High-value targets and suspicious destination ports -->
+        <DestinationPort condition="is">4444</DestinationPort>
+        <DestinationPort condition="is">1337</DestinationPort>
+        <DestinationPort condition="is">31337</DestinationPort>
+        <DestinationPort condition="is">8888</DestinationPort>
+        <DestinationPort condition="is">9001</DestinationPort>
+        <DestinationPort condition="is">9030</DestinationPort>
+        <!-- C2 traffic via common ports from non-browser processes -->
+        <Image condition="end with">powershell.exe</Image>
+        <Image condition="end with">cmd.exe</Image>
+        <Image condition="end with">mshta.exe</Image>
+        <Image condition="end with">wscript.exe</Image>
+        <Image condition="end with">cscript.exe</Image>
+        <Image condition="end with">regsvr32.exe</Image>
+        <Image condition="end with">rundll32.exe</Image>
+        <Image condition="end with">certutil.exe</Image>
+        <Image condition="end with">bitsadmin.exe</Image>
+      </NetworkConnect>
+    </RuleGroup>
+
+    <!-- ============================================================
+         EVENT 5: PROCESS TERMINATION
+         ============================================================ -->
+    <RuleGroup name="ProcessTerminate" groupRelation="or">
+      <ProcessTerminate onmatch="include">
+        <!-- Track when security tools are killed -->
+        <Image condition="contains">MsMpEng</Image>
+        <Image condition="contains">SecurityHealthService</Image>
+        <Image condition="contains">WinDefend</Image>
+      </ProcessTerminate>
+    </RuleGroup>
+
+    <!-- ============================================================
+         EVENT 6: DRIVER LOADING
+         ============================================================ -->
+    <RuleGroup name="DriverLoad" groupRelation="or">
+      <DriverLoad onmatch="include">
+        <!-- Unsigned drivers -->
+        <Signed condition="is">false</Signed>
+      </DriverLoad>
+    </RuleGroup>
+
+    <!-- ============================================================
+         EVENT 7: IMAGE LOADED (DLLs)
+         ============================================================ -->
+    <RuleGroup name="ImageLoad" groupRelation="or">
+      <ImageLoad onmatch="include">
+        <!-- DLL loaded from temp/user directories -->
+        <ImageLoaded condition="contains">C:\Users\</ImageLoaded>
+        <ImageLoaded condition="contains">C:\Windows\Temp</ImageLoaded>
+        <ImageLoaded condition="contains">\AppData\</ImageLoaded>
+        <!-- Credential dumping DLLs -->
+        <ImageLoaded condition="end with">wdigest.dll</ImageLoaded>
+        <ImageLoaded condition="end with">kerberos.dll</ImageLoaded>
+        <ImageLoaded condition="end with">cryptdll.dll</ImageLoaded>
+      </ImageLoad>
+    </RuleGroup>
+
+    <!-- ============================================================
+         EVENT 8: CREATE REMOTE THREAD
+         ============================================================ -->
+    <RuleGroup name="CreateRemoteThread" groupRelation="or">
+      <CreateRemoteThread onmatch="include">
+        <!-- Capture ALL remote thread creation - high-fidelity injection indicator -->
+        <TargetImage condition="contains">lsass.exe</TargetImage>
+        <TargetImage condition="contains">explorer.exe</TargetImage>
+        <TargetImage condition="contains">svchost.exe</TargetImage>
+        <TargetImage condition="contains">winlogon.exe</TargetImage>
+        <TargetImage condition="contains">spoolsv.exe</TargetImage>
+        <StartFunction condition="contains">LoadLibraryA</StartFunction>
+        <StartFunction condition="contains">CreateThread</StartFunction>
+      </CreateRemoteThread>
+    </RuleGroup>
+
+    <!-- ============================================================
+         EVENT 10: PROCESS ACCESS (Memory reads)
+         ============================================================ -->
+    <RuleGroup name="ProcessAccess" groupRelation="or">
+      <ProcessAccess onmatch="include">
+        <!-- LSASS credential access -->
+        <TargetImage condition="end with">lsass.exe</TargetImage>
+        <!-- SAM database access -->
+        <TargetImage condition="end with">sam.exe</TargetImage>
+        <!-- AD secrets -->
+        <TargetImage condition="end with">ntds.dit</TargetImage>
+      </ProcessAccess>
+      <ProcessAccess onmatch="exclude">
+        <!-- Exclude known benign accesses -->
+        <SourceImage condition="is">C:\Windows\System32\wininit.exe</SourceImage>
+        <SourceImage condition="is">C:\Windows\System32\csrss.exe</SourceImage>
+        <SourceImage condition="contains">MsMpEng.exe</SourceImage>
+      </ProcessAccess>
+    </RuleGroup>
+
+    <!-- ============================================================
+         EVENT 11: FILE CREATE
+         ============================================================ -->
+    <RuleGroup name="FileCreate" groupRelation="or">
+      <FileCreate onmatch="include">
+        <!-- Executables in user-writable locations -->
+        <TargetFilename condition="contains">\AppData\</TargetFilename>
+        <TargetFilename condition="contains">C:\Windows\Temp</TargetFilename>
+        <TargetFilename condition="contains">C:\Users\Public</TargetFilename>
+        <TargetFilename condition="contains">C:\ProgramData</TargetFilename>
+        <!-- Ransomware indicators -->
+        <TargetFilename condition="end with">.locked</TargetFilename>
+        <TargetFilename condition="end with">.encrypted</TargetFilename>
+        <TargetFilename condition="end with">.crypt</TargetFilename>
+        <TargetFilename condition="end with">.wnry</TargetFilename>
+        <TargetFilename condition="contains">README_DECRYPT</TargetFilename>
+        <TargetFilename condition="contains">HOW_TO_DECRYPT</TargetFilename>
+        <!-- Scripts in suspicious locations -->
+        <TargetFilename condition="end with">.ps1</TargetFilename>
+        <TargetFilename condition="end with">.vbs</TargetFilename>
+        <TargetFilename condition="end with">.bat</TargetFilename>
+        <TargetFilename condition="end with">.hta</TargetFilename>
+      </FileCreate>
+    </RuleGroup>
+
+    <!-- ============================================================
+         EVENTS 12, 13, 14: REGISTRY EVENTS
+         ============================================================ -->
+    <RuleGroup name="RegistryEvent" groupRelation="or">
+      <RegistryEvent onmatch="include">
+        <!-- Persistence keys -->
+        <TargetObject condition="contains">SOFTWARE\Microsoft\Windows\CurrentVersion\Run</TargetObject>
+        <TargetObject condition="contains">SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon</TargetObject>
+        <TargetObject condition="contains">SYSTEM\CurrentControlSet\Services</TargetObject>
+        <!-- AppInit DLL hijacking -->
+        <TargetObject condition="contains">SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows\AppInit_DLLs</TargetObject>
+        <!-- Security tool disablement -->
+        <TargetObject condition="contains">Windows Defender</TargetObject>
+        <!-- COM hijacking -->
+        <TargetObject condition="contains">Software\Classes\CLSID</TargetObject>
+      </RegistryEvent>
+    </RuleGroup>
+
+    <!-- ============================================================
+         EVENT 17/18: NAMED PIPE EVENTS
+         ============================================================ -->
+    <RuleGroup name="PipeEvent" groupRelation="or">
+      <PipeEvent onmatch="include">
+        <!-- C2 framework named pipes (Cobalt Strike, Meterpreter) -->
+        <PipeName condition="contains">msagent_</PipeName>
+        <PipeName condition="contains">mojo.</PipeName>
+        <PipeName condition="contains">postex_</PipeName>
+        <PipeName condition="contains">status_</PipeName>
+        <PipeName condition="contains">MSSE-</PipeName>
+        <PipeName condition="contains">ntsvcs</PipeName>
+        <PipeName condition="contains">scerpc</PipeName>
+      </PipeEvent>
+    </RuleGroup>
+
+    <!-- ============================================================
+         EVENT 22: DNS QUERIES
+         ============================================================ -->
+    <RuleGroup name="DnsQuery" groupRelation="or">
+      <DnsQuery onmatch="include">
+        <!-- Log all DNS queries from suspicious processes -->
+        <Image condition="end with">powershell.exe</Image>
+        <Image condition="end with">cmd.exe</Image>
+        <Image condition="end with">wscript.exe</Image>
+        <Image condition="end with">mshta.exe</Image>
+        <Image condition="end with">certutil.exe</Image>
+        <!-- Suspicious TLDs -->
+        <QueryName condition="end with">.top</QueryName>
+        <QueryName condition="end with">.xyz</QueryName>
+        <QueryName condition="end with">.pw</QueryName>
+        <QueryName condition="end with">.tk</QueryName>
+        <QueryName condition="end with">.ml</QueryName>
+      </DnsQuery>
+    </RuleGroup>
+
+  </EventFiltering>
+</Sysmon>
