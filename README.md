@@ -1018,11 +1018,3 @@ This project demonstrates skills validated by the following certifications:
 | **EnCE** | Guidance/OpenText | File system forensics, e-discovery |
 
 ---
-
-## Legal Disclaimer
-
-This framework is intended for **authorized security testing, forensic analysis, and educational purposes only**. All techniques, tools, and scripts must only be used on systems you own or have explicit written authorization to access. Unauthorized use against third-party systems is illegal.
-
----
-
-*Built to demonstrate DFIR capabilities aligned with consulting firm requirements (CRA, Big 4 Forensics) and SANS/IACIS certification tracks.*
